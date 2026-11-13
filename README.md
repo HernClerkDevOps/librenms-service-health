@@ -1,53 +1,121 @@
-# Service Health: LibreNMS native widget proof of concept
+# Service Health for LibreNMS
 
-**Status:** Source package for pilot testing, not installed or tested on your LibreNMS server.
+A native LibreNMS dashboard widget for selected monitored services.
 
-Designed around source code supplied from LibreNMS 26.11.0-dev.215 and Laravel 13.33.0.
-The plugin adds one native dashboard widget named **Service Health**.
-It does not read databases, change monitoring, create alerts, or modify LibreNMS core files.
+Version 0.2.0 is designed against LibreNMS 26.11 source interfaces. It reads the existing `App\Models\Service` records through LibreNMS's device access scope and does not modify LibreNMS core, monitoring configuration, or the database schema.
 
-## Package contents
+## Features
 
-- `composer.json`: Composer package metadata and Laravel package auto-discovery.
-- `src/Providers/ServiceHealthProvider.php`: loads routes and namespaced Blade views.
-- `routes/web.php`: registers authenticated POST widget route under nested `ajax` / `dash` prefixes.
-- `src/Http/Controllers/ServiceHealthWidgetController.php`: extends LibreNMS's widget controller.
-- `resources/views/widgets/service-health.blade.php`: static proof-of-concept display.
+- Per-widget selection of one or more accessible LibreNMS services
+- Native widget title and automatic refresh settings
+- Configurable stale threshold
+- OK, warning, critical, unknown, stale, ignored, and disabled states
+- Response time when LibreNMS's stored service message contains a recognizable time value
+- Last poll time, based on the monitored device's `last_polled` value
+- Links to each service's device Services page
+- Manual refresh button
 
-## Recommended production-safe installation path
+## Behavior and limits
 
-**Do not** copy these PHP files over LibreNMS core files. **Do not** modify `routes/web.php` or `bootstrap/providers.php` in LibreNMS.
+LibreNMS stores the latest service status and message, but it does not store a dedicated last-poll timestamp or current performance value in the `services` table. The widget therefore:
 
-1. Put this package into a private Git repository or package registry (with internal code review). Ensure your Composer repository can resolve `hernandotech/librenms-service-health` version `0.1.0` (a VCS tag or registry publication may be required). A ZIP by itself is not a published Composer package.
-2. On a staging copy of LibreNMS, back up the database and configuration. Check `sudo -u librenms git status --short` before modifying dependencies.
-3. Use LibreNMS's supported plugin package manager (after the package is discoverable to Composer):
+- uses the parent device's `last_polled` time for last poll and stale detection;
+- extracts response time only from recognizable text in `service_message` (for example, `time=24ms` or `0.123 second response time`); and
+- displays `N/A` when a response time is not present in that message.
 
-    ```bash
-    cd /opt/librenms
-    sudo -u librenms ./lnms plugin:add hernandotech/librenms-service-health '0.1.0'
-    sudo -u librenms php artisan route:clear
-    sudo -u librenms php artisan view:clear
-    ```
+The widget only returns services allowed by LibreNMS's `Service::hasAccess()` scope. A configured service that was removed or is no longer accessible is counted as unavailable without revealing its details.
 
-4. **No `plugin:enable` step is required in this minimal POC**: its Composer provider registers the route when the package is installed. It does not publish legacy plugin hooks or expose an entry in Plugins Admin. If the package isn't discovered, check Laravel's package-discovery output and `bootstrap/cache/packages.php` before attempting changes.
-5. Open an existing LibreNMS dashboard and choose **Add Widget > Service Health**. The widget should display a green confirmation banner.
-6. Verify the route **in the web UI**, rather than relying solely on `php artisan route:list`, which on your server currently exposes only two API routes. In a staging environment, the widget should be tested while logged in and blocked when logged out.
-7. Exercise a normal nightly-update process on staging, confirm the plugin still appears, then inspect `git status --short` and `validate.php`. **Update survival is not proven by this ZIP.**
+Dashboard discovery through the `ajax/dash` route prefix is an internal LibreNMS interface. Re-test this package with every LibreNMS upgrade.
 
-### Troubleshooting
+## Requirements
 
-If Add Widget doesn't show the POC, check the package/provider discovery first, then Laravel web route cache (`route:clear`). Do not modify the tracked LibreNMS routes file.
+- LibreNMS 26.11
+- PHP 8.2 or newer
+- `librenms/plugin-interfaces` 1.x
+- Existing LibreNMS service checks
 
-If you get HTTP 419, the frontend request may be missing CSRF context. The built-in widget AJAX request handles this in ordinary dashboard use.
+## Test
 
-If the widget returns HTTP 500, inspect `storage/logs/laravel.log` or LibreNMS's configured application log. Disable/remove the package through the documented package-management process if necessary.
+From the package checkout:
 
-If plugin installation cannot resolve the package, it is not yet available in a Composer repository. Do not run `composer require` against the LibreNMS root without first reviewing its update workflow and rollback plan.
+```bash
+composer validate --strict
+composer test
+```
 
-## Removing the package
+The test suite covers status mapping, stale and unknown behavior, disabled and ignored states, last-poll handling, and response-time extraction. A staging LibreNMS acceptance test is still required because this repository does not bundle LibreNMS itself.
 
-On the staging instance, if installed through `lnms plugin:add`, use `lnms plugin:remove` for the package after confirming its command syntax with `./lnms plugin:remove --help`. Clear route/view caches afterward. Remove any dashboard placement first.
+## Upgrade from 0.1.0
 
-## Important caveat
+Do this on staging first. Do not edit `/opt/librenms` core files.
 
-LibreNMS dashboard discovery via `ajax/dash` routes is an **internal implementation detail**, not a guaranteed stable public widget API. Test each LibreNMS version before production use. This POC does not yet implement plugin enable/disable hooks, service selection, live polling status, alerts, or TDX integration.
+1. Record the currently installed version and save the existing widget settings or a dashboard screenshot.
+2. Confirm the 0.2.0 tag is available to the Composer repository used by LibreNMS.
+3. Check the LibreNMS tree before changing dependencies:
+
+   ```bash
+   cd /opt/librenms
+   sudo -u librenms git status --short
+   ```
+
+4. Use LibreNMS's plugin package manager:
+
+   ```bash
+   sudo -u librenms ./lnms plugin:add hernandotech/librenms-service-health '0.2.0'
+   sudo -u librenms php artisan optimize:clear --except=cache
+   ```
+
+5. Open the dashboard, edit the Service Health widget, select the services, set the stale threshold and refresh interval, then save.
+6. Verify each selected service's state, service link, last poll, automatic refresh, manual refresh, and access behavior with a restricted LibreNMS user.
+7. Run LibreNMS validation and inspect the working tree:
+
+   ```bash
+   sudo -u librenms ./validate.php
+   sudo -u librenms git status --short
+   ```
+
+8. Exercise the normal LibreNMS daily update on staging and repeat the checks before requesting production approval.
+
+No production deployment is part of this repository change.
+
+## Rollback to 0.1.0
+
+If 0.2.0 fails staging acceptance:
+
+1. Remove Service Health widgets from affected dashboards, or record their placement before removal.
+2. Reinstall the last known good release through the plugin package manager:
+
+   ```bash
+   cd /opt/librenms
+   sudo -u librenms ./lnms plugin:remove hernandotech/librenms-service-health
+   sudo -u librenms ./lnms plugin:add hernandotech/librenms-service-health '0.1.0'
+   sudo -u librenms php artisan optimize:clear --except=cache
+   ```
+
+3. Re-add the 0.1.0 widget if its dashboard placement was removed.
+4. Run `sudo -u librenms ./validate.php` and confirm `git status --short` contains no unexpected LibreNMS core changes.
+
+Confirm the exact `plugin:remove` syntax with `./lnms plugin:remove --help` on the target LibreNMS version before executing rollback.
+
+## Troubleshooting
+
+- Widget missing from Add Widget: check Composer package discovery and `bootstrap/cache/packages.php`, then clear the route and view caches. Do not edit LibreNMS's tracked routes.
+- HTTP 419: verify the request is made from the authenticated LibreNMS dashboard so the normal CSRF context is included.
+- HTTP 500: inspect `storage/logs/laravel.log` or the configured application log, then roll back through the plugin manager if needed.
+- No services in settings: verify service checks exist and the signed-in user can access their devices.
+- Stale despite recent service results: compare the device's `last_polled` time with the configured stale threshold and confirm the device poller is running.
+- Response shows N/A: the latest stored service message does not contain a supported response-time format. The status remains valid.
+
+## Package layout
+
+- `src/Http/Controllers/ServiceHealthWidgetController.php`: access-controlled service query and widget settings
+- `src/Support/ServiceHealthPresenter.php`: status, age, and response-time presentation logic
+- `resources/views/widgets/service-health.blade.php`: widget display
+- `resources/views/widgets/settings/service-health.blade.php`: service selection and stale configuration
+- `routes/web.php`: authenticated native widget route
+- `tests/run.php`: dependency-free presentation tests
+- `docs/COMPATIBILITY.md`: inspected LibreNMS 26.11 source contracts and assumptions
+
+## License
+
+MIT
