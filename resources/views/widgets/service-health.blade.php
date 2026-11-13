@@ -1,6 +1,6 @@
 <div style="padding:18px;">
     <div style="font-size:18px;font-weight:600;margin-bottom:8px;">
-        Hernando Service Health
+        Service Health
     </div>
     <div class="alert alert-success" role="status" style="margin-bottom:12px;">
         Plugin registered and widget rendered successfully.
