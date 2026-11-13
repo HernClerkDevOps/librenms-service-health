@@ -14,7 +14,7 @@ final class ServiceHealthWidgetController extends WidgetController
 
     public function getTitle(): string
     {
-        return 'Hernando Service Health';
+        return 'Service Health';
     }
 
     public function getView(Request $request): View|string
