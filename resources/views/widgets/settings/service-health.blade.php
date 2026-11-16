@@ -9,8 +9,8 @@
 
     <div class="form-group">
         <label for="service-ids-{{ $id }}" class="control-label">Services</label>
-        <select class="form-control" id="service-ids-{{ $id }}" name="service_ids[]" multiple required
-                data-placeholder="Select one or more services">
+        <select class="form-control" id="service-ids-{{ $id }}" name="service_ids[]" multiple
+                data-placeholder="All accessible services">
             @foreach($services as $service)
                 <option value="{{ $service->service_id }}"
                         @selected(in_array((int) $service->service_id, $service_ids, true))>
@@ -19,7 +19,7 @@
                 </option>
             @endforeach
         </select>
-        <p class="help-block">Only services you can access are listed.</p>
+        <p class="help-block">Leave empty to show all accessible services. Select services to limit the widget.</p>
     </div>
 
     <div class="form-group">

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1
+
+- Show all services accessible to the current user when no services are selected.
+- Keep explicit service selection available to limit a widget.
+
 ## 0.2.0
 
 - Read live, access-controlled LibreNMS service data.

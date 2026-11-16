@@ -2,11 +2,12 @@
 
 A native LibreNMS dashboard widget for selected monitored services.
 
-Version 0.2.0 is designed against LibreNMS 26.11 source interfaces. It reads the existing `App\Models\Service` records through LibreNMS's device access scope and does not modify LibreNMS core, monitoring configuration, or the database schema.
+Version 0.2.1 is designed against LibreNMS 26.11 source interfaces. It reads the existing `App\Models\Service` records through LibreNMS's device access scope and does not modify LibreNMS core, monitoring configuration, or the database schema.
 
 ## Features
 
-- Per-widget selection of one or more accessible LibreNMS services
+- All accessible LibreNMS services by default
+- Optional per-widget selection to limit the displayed services
 - Native widget title and automatic refresh settings
 - Configurable stale threshold
 - OK, warning, critical, unknown, stale, ignored, and disabled states
@@ -24,6 +25,8 @@ LibreNMS stores the latest service status and message, but it does not store a d
 - displays `N/A` when a response time is not present in that message.
 
 The widget only returns services allowed by LibreNMS's `Service::hasAccess()` scope. A configured service that was removed or is no longer accessible is counted as unavailable without revealing its details.
+
+When the service selection is empty, the widget displays every service accessible to the current user. Selecting one or more services changes the widget to an explicit filtered view.
 
 Dashboard discovery through the `ajax/dash` route prefix is an internal LibreNMS interface. Re-test this package with every LibreNMS upgrade.
 
@@ -77,6 +80,18 @@ Do this on staging first. Do not edit `/opt/librenms` core files.
 8. Exercise the normal LibreNMS daily update on staging and repeat the checks before requesting production approval.
 
 No production deployment is part of this repository change.
+
+### Upgrade from 0.2.0 to 0.2.1
+
+After the 0.2.1 release is available, use the same staging-first process with:
+
+```bash
+cd /opt/librenms
+sudo -u librenms ./lnms plugin:add hernandotech/librenms-service-health '0.2.1'
+sudo -u librenms php artisan optimize:clear --except=cache
+```
+
+Existing widgets with selected services keep those filters. Widgets with no selected services begin showing all services accessible to the signed-in user.
 
 ## Rollback to 0.1.0
 
