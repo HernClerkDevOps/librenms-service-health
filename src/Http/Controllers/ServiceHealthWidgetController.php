@@ -7,6 +7,7 @@ namespace HernandoTech\ServiceHealth\Http\Controllers;
 use App\Http\Controllers\Widgets\WidgetController;
 use App\Models\Service;
 use HernandoTech\ServiceHealth\Support\ServiceHealthPresenter;
+use HernandoTech\ServiceHealth\Support\ServiceSelection;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 use LibreNMS\Util\Url;
@@ -29,20 +30,20 @@ final class ServiceHealthWidgetController extends WidgetController
     public function getView(Request $request): View|string
     {
         $settings = $this->getSettings();
-        $serviceIds = $this->normalizeServiceIds($settings['service_ids'] ?? []);
-
-        if ($serviceIds === []) {
-            return $this->getSettingsView($request);
-        }
+        $serviceIds = ServiceSelection::normalize($settings['service_ids'] ?? []);
 
         $staleAfterMinutes = max(1, min(1440, (int) ($settings['stale_after_minutes'] ?? 15)));
-        $services = Service::query()
+        $query = Service::query()
             ->hasAccess($request->user())
             ->with('device')
-            ->whereIntegerInRaw('service_id', $serviceIds)
             ->orderBy('device_id')
-            ->orderBy('service_name')
-            ->get();
+            ->orderBy('service_name');
+
+        if (ServiceSelection::isExplicit($serviceIds)) {
+            $query->whereIntegerInRaw('service_id', $serviceIds);
+        }
+
+        $services = $query->get();
 
         $presenter = new ServiceHealthPresenter();
         $rows = $services->map(function (Service $service) use ($presenter, $staleAfterMinutes): array {
@@ -62,7 +63,9 @@ final class ServiceHealthWidgetController extends WidgetController
         return view('hernandoservicehealth::widgets.service-health', [
             'id' => $settings['id'],
             'rows' => $rows,
-            'missingCount' => count($serviceIds) - $rows->count(),
+            'missingCount' => ServiceSelection::isExplicit($serviceIds)
+                ? count($serviceIds) - $rows->count()
+                : 0,
             'staleAfterMinutes' => $staleAfterMinutes,
         ]);
     }
@@ -70,7 +73,7 @@ final class ServiceHealthWidgetController extends WidgetController
     public function getSettingsView(Request $request): View
     {
         $settings = $this->getSettings(true);
-        $settings['service_ids'] = $this->normalizeServiceIds($settings['service_ids'] ?? []);
+        $settings['service_ids'] = ServiceSelection::normalize($settings['service_ids'] ?? []);
         $settings['services'] = Service::query()
             ->hasAccess($request->user())
             ->with('device')
@@ -79,16 +82,5 @@ final class ServiceHealthWidgetController extends WidgetController
             ->get();
 
         return view('hernandoservicehealth::widgets.settings.service-health', $settings);
-    }
-
-    /** @return list<int> */
-    private function normalizeServiceIds(mixed $value): array
-    {
-        $values = is_array($value) ? $value : explode(',', (string) $value);
-
-        return array_values(array_unique(array_filter(
-            array_map(static fn (mixed $id): int => (int) $id, $values),
-            static fn (int $id): bool => $id > 0,
-        )));
     }
 }

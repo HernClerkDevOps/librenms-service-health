@@ -3,8 +3,10 @@
 declare(strict_types=1);
 
 require __DIR__ . '/../src/Support/ServiceHealthPresenter.php';
+require __DIR__ . '/../src/Support/ServiceSelection.php';
 
 use HernandoTech\ServiceHealth\Support\ServiceHealthPresenter;
+use HernandoTech\ServiceHealth\Support\ServiceSelection;
 
 $presenter = new ServiceHealthPresenter();
 $now = new DateTimeImmutable('2026-11-13 12:00:00 UTC');
@@ -62,4 +64,11 @@ foreach ($responseCases as $message => $expected) {
     expect($row['responseTime'] === $expected, "Unexpected response time for: $message");
 }
 
-echo "ServiceHealthPresenter tests passed\n";
+expect(ServiceSelection::normalize([]) === [], 'An empty selection must remain empty');
+expect(! ServiceSelection::isExplicit([]), 'An empty selection must mean all accessible services');
+
+$selected = ServiceSelection::normalize(['4', 2, '4', 0, -1, 'bad']);
+expect($selected === [4, 2], 'Explicit service IDs must be positive and unique');
+expect(ServiceSelection::isExplicit($selected), 'Selected IDs must enable explicit filtering');
+
+echo "Service Health tests passed\n";
